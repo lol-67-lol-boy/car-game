@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Open Road: Supercar Drive</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #10151b;
+      color: #f4f6f8;
+      font: 16px system-ui, sans-serif;
+    }
+    .game {
+      max-width: 1100px;
+      margin: auto;
+      padding: 18px;
+    }
+    header, .panel, .stat {
+      background: #1b232c;
+      border: 1px solid #303b47;
+      border-radius: 12px;
+    }
+    header {
+      padding: 16px 20px;
+      margin-bottom: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    h1 { margin: 0; font-size: clamp(20px, 4vw, 30px); }
+    .subtitle { color: #aeb9c4; font-size: 13px; margin-top: 3px; }
+    .money { color: #8df0a2; font-weight: 800; font-size: 22px; white-space: nowrap; }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      gap: 14px;
+    }
+    .panel { padding: 14px; }
+    canvas {
+      width: 100%;
+      height: min(62vw, 560px);
+      min-height: 300px;
+      display: block;
+      border-radius: 8px;
+      background: #8ec7ed;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .stat { padding: 10px; text-align: center; }
+    .stat small { display: block; color: #aeb9c4; }
+    .stat strong { font-size: 19px; }
+    h2 { font-size: 18px; margin: 2px 0 10px; }
+    select, button {
+      width: 100%;
+      border: 1px solid #455363;
+      border-radius: 8px;
+      padding: 11px;
+      color: #f4f6f8;
+      background: #111820;
+      font: inherit;
+    }
+    button { cursor: pointer; background: #287cfa; border: 0; font-weight: 700; }
+    button:hover { background: #4590ff; }
+    .car-info { margin: 12px 0; padding: 12px; background: #111820; border-radius: 8px; }
+    .car-info strong { display: block; margin-bottom: 4px; }
+    .muted, .help { color: #aeb9c4; font-size: 13px; line-height: 1.5; }
+    .help { margin-top: 14px; }
+    .notice { margin-top: 10px; min-height: 20px; color: #ffd479; font-size: 13px; }
+    @media (max-width: 760px) {
+      .layout { grid-template-columns: 1fr; }
+      canvas { height: 58vw; min-height: 280px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="game">
+    <header>
+      <div>
+        <h1>🏁 Open Road: Supercar Drive</h1>
+        <div class="subtitle">Choose your car, hit the road, and build your driving fortune.</div>
+      </div>
+      <div class="money" id="money">$0</div>
+    </header>
+
+    <div class="layout">
+      <section class="panel">
+        <canvas id="road" aria-label="Driving game"></canvas>
+        <div class="stats">
+          <div class="stat"><small>Speed</small><strong><span id="speed">0</span> km/h</strong></div>
+          <div class="stat"><small>Distance</small><strong><span id="distance">0.0</span> km</strong></div>
+          <div class="stat"><small>Earn rate</small><strong id="rate">$0/s</strong></div>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <h2>Choose your car</h2>
+        <select id="carSelect" aria-label="Choose a car"></select>
+        <div class="car-info">
+          <strong id="carName"></strong>
+          <div class="muted" id="carDetails"></div>
+        </div>
+        <button id="driveButton">Start driving</button>
+        <div class="notice" id="notice"></div>
+        <div class="help">
+          <strong>Controls</strong><br>
+          W / ↑ — accelerate<br>
+          S / ↓ — brake<br>
+          A / ← and D / → — steer<br>
+          Space — handbrake<br><br>
+          You earn cash each second while driving above 5 km/h. Your balance is saved in this browser.
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    const cars = [
+      { name: "BMW M4", rate: 12, top: 290, accel: 105, color: "#3d79c5", detail: "Balanced sports coupe" },
+      { name: "BMW E60", rate: 9, top: 255, accel: 82, color: "#a9afb8", detail: "Classic performance sedan" },
+      { name: "Koenigsegg Jesko", rate: 35, top: 410, accel: 150, color: "#e5bd45", detail: "Extreme hypercar" },
+      { name: "Lamborghini Aventador", rate: 27, top: 350, accel: 125, color: "#d94c32", detail: "V12 supercar" },
+      { name: "McLaren P1", rate: 30, top: 360, accel: 135, color: "#f18b35", detail: "Hybrid hypercar" },
+      { name: "NASCAR Stock Car", rate: 18, top: 320, accel: 118, color: "#43a76a", detail: "High-speed oval racer" },
+      { name: "Bugatti Chiron", rate: 32, top: 390, accel: 140, color: "#5578db", detail: "Luxury speed machine" }
+    ];
+
+    const canvas = document.getElementById("road");
+    const ctx = canvas.getContext("2d");
+    const select = document.getElementById("carSelect");
+    const moneyEl = document.getElementById("money");
+    const speedEl = document.getElementById("speed");
+    const distanceEl = document.getElementById("distance");
+    const rateEl = document.getElementById("rate");
+    const noticeEl = document.getElementById("notice");
+    const driveButton = document.getElementById("driveButton");
+
+    cars.forEach((car, i) => {
+      const option = document.createElement("option");
+      option.value = i;
+      option.textContent = car.name;
+      select.appendChild(option);
+    });
+
+    let car = cars[0];
+    let running = false;
+    let speed = 0;
+    let distance = 0;
+    let money = Number(localStorage.getItem("openRoadMoney")) || 0;
+    let roadTravel = 0;
+    let playerX = 0;
+    let lastTime = performance.now();
+    const keys = new Set();
+
+    function moneyText(value) {
+      return "$" + Math.floor(value).toLocaleString();
+    }
+
+    function updateCar() {
+      car = cars[Number(select.value)];
+      document.getElementById("carName").textContent = car.name;
+      document.getElementById("carDetails").textContent =
+        `${car.detail} · Earns ${moneyText(car.rate)} per second · Top speed ${car.top} km/h`;
+      rateEl.textContent = running && speed > 5 ? moneyText(car.rate) + "/s" : "$0/s";
+    }
+
+    select.addEventListener("change", updateCar);
+    updateCar();
+
+    driveButton.addEventListener("click", () => {
+      running = !running;
+      driveButton.textContent = running ? "Pause driving" : "Start driving";
+      noticeEl.textContent = running ? "Drive safely and enjoy the road!" : "Drive paused.";
+      lastTime = performance.now();
+    });
+
+    window.addEventListener("keydown", e => {
+      const key = e.key.toLowerCase();
+      if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(key)) e.preventDefault();
+      keys.add(key);
+      if (key === "enter" && !running) driveButton.click();
+    });
+    window.addEventListener("keyup", e => keys.delete(e.key.toLowerCase()));
+    window.addEventListener("blur", () => keys.clear());
+
+    function resize() {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    new ResizeObserver(resize).observe(canvas);
+
+    function polygon(points, color) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(points[0][0], points[0][1]);
+      points.slice(1).forEach(p => ctx.lineTo(p[0], p[1]));
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawCar(w, h) {
+      const x = w * (0.5 + playerX * 0.27);
+      const y = h * 0.83;
+      const carW = Math.min(w * 0.24, 150);
+      const carH = carW * 0.62;
+      ctx.save();
+      ctx.translate(x, y);
+      const steerTilt = (keys.has("a") || keys.has("arrowleft") ? -0.035 : 0) +
+                        (keys.has("d") || keys.has("arrowright") ? 0.035 : 0);
+      ctx.rotate(steerTilt);
+
+      // Shadow and body
+      ctx.fillStyle = "rgba(0,0,0,.35)";
+      ctx.beginPath();
+      ctx.ellipse(0, carH * 0.31, carW * 0.58, carH * 0.17, 0, 0, Math.PI * 2);
+      ctx.fill();
+      polygon([[-carW*.5, carH*.25],[-carW*.42,-carH*.05],[-carW*.25,-carH*.36],
+        [carW*.25,-carH*.36],[carW*.42,-carH*.05],[carW*.5,carH*.25],
+        [carW*.38,carH*.43],[-carW*.38,carH*.43]], car.color);
+      polygon([[-carW*.27,-carH*.12],[-carW*.19,-carH*.32],
+        [carW*.19,-carH*.32],[carW*.27,-carH*.12]], "#26333c");
+      ctx.fillStyle = "#f8e6a3";
+      ctx.fillRect(-carW*.39, carH*.11, carW*.15, carH*.08);
+      ctx.fillRect(carW*.24, carH*.11, carW*.15, carH*.08);
+      ctx.fillStyle = "#b32b2b";
+      ctx.fillRect(-carW*.38, carH*.32, carW*.17, carH*.07);
+      ctx.fillRect(carW*.21, carH*.32, carW*.17, carH*.07);
+      ctx.restore();
+    }
+
+    function draw(w, h, dt) {
+      const horizon = h * 0.39;
+      const center = w * 0.5;
+      const curve = Math.sin(roadTravel * 0.00028) * w * 0.07;
+      const roadWidth = w * 0.64;
+
+      const sky = ctx.createLinearGradient(0, 0, 0, horizon);
+      sky.addColorStop(0, "#75bce9");
+      sky.addColorStop(1, "#d5edfa");
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, w, horizon);
+
+      // Distant hills
+      polygon([[0,horizon],[0,h*.27],[w*.13,h*.19],[w*.26,h*.29],[w*.42,h*.17],
+        [w*.58,h*.28],[w*.76,h*.18],[w,h*.26],[w,horizon]], "#819b85");
+      ctx.fillStyle = "#7caf63";
+      ctx.fillRect(0, horizon, w, h - horizon);
+
+      // Road
+      polygon([[center + curve - roadWidth*.07,horizon],
+        [center + curve + roadWidth*.07,horizon],
+        [center + curve + roadWidth*.62,h],
+        [center + curve - roadWidth*.62,h]], "#45494d");
+
+      // Road edges
+      ctx.strokeStyle = "#f3f0d7";
+      ctx.lineWidth = Math.max(2, w * .004);
+      ctx.beginPath();
+      ctx.moveTo(center + curve - roadWidth*.07, horizon);
+      ctx.lineTo(center + curve - roadWidth*.62, h);
+      ctx.moveTo(center + curve + roadWidth*.07, horizon);
+      ctx.lineTo(center + curve + roadWidth*.62, h);
+      ctx.stroke();
+
+      // Perspective lane markings
+      for (let i = 0; i < 12; i++) {
+        const t = ((i / 12 + (roadTravel * 0.00055) % 1) % 1);
+        const y = horizon + Math.pow(t, 1.7) * (h - horizon);
+        const widthAtY = roadWidth * (0.14 + t * 1.1);
+        const cx = center + curve * t;
+        const dashH = 3 + t * 24;
+        ctx.fillStyle = "#f4e7a5";
+        ctx.fillRect(cx - widthAtY*.18, y, 3 + t*3, dashH);
+        ctx.fillRect(cx + widthAtY*.18, y, 3 + t*3, dashH);
+      }
+
+      // Passing roadside trees
+      for (let i = 0; i < 18; i++) {
+        const t = ((i / 18 + (roadTravel * 0.00032) % 1) % 1);
+        const y = horizon + Math.pow(t, 1.8) * (h - horizon);
+        const size = 5 + t * 35;
+        const drift = curve * t;
+        const x1 = center - roadWidth * (0.09 + t * .75) + drift;
+        const x2 = center + roadWidth * (0.09 + t * .75) + drift;
+        for (const x of [x1, x2]) {
+          ctx.fillStyle = "#604833";
+          ctx.fillRect(x - size*.08, y - size*.18, size*.16, size*.55);
+          ctx.fillStyle = "#2c6943";
+          ctx.beginPath();
+          ctx.arc(x, y - size*.4, size*.42, 0, Math.PI*2);
+          ctx.fill();
+        }
+      }
+
+      drawCar(w, h);
+    }
+
+    function frame(now) {
+      const dt = Math.min((now - lastTime) / 1000, 0.05);
+      lastTime = now;
+
+      if (running) {
+        const accelerating = keys.has("w") || keys.has("arrowup");
+        const braking = keys.has("s") || keys.has("arrowdown") || keys.has(" ");
+        if (accelerating) speed += car.accel * dt;
+        else speed -= (braking ? 210 : 45) * dt;
+        if (braking && accelerating) speed -= 100 * dt;
+        speed = Math.max(0, Math.min(car.top, speed));
+
+        const steering = (keys.has("d") || keys.has("arrowright") ? 1 : 0) -
+                         (keys.has("a") || keys.has("arrowleft") ? 1 : 0);
+        playerX += steering * dt * (0.48 + speed / 500);
+        playerX *= Math.pow(0.985, dt * 60);
+        playerX = Math.max(-1, Math.min(1, playerX));
+
+        if (Math.abs(playerX) > 0.78) {
+          speed = Math.max(0, speed - 95 * dt);
+          noticeEl.textContent = "Careful—you’re leaving the road!";
+        } else {
+          noticeEl.textContent = "";
+        }
+
+        const km = speed * dt / 3600;
+        distance += km;
+        roadTravel += speed * dt;
+
+        if (speed > 5) {
+          money += car.rate * dt;
+          localStorage.setItem("openRoadMoney", String(Math.floor(money)));
+        }
+      }
+
+      moneyEl.textContent = moneyText(money);
+      speedEl.textContent = Math.round(speed);
+      distanceEl.textContent = distance.toFixed(1);
+      rateEl.textContent = running && speed > 5 ? moneyText(car.rate) + "/s" : "$0/s";
+
+      const rect = canvas.getBoundingClientRect();
+      draw(rect.width, rect.height, dt);
+      requestAnimationFrame(frame);
+    }
+
+    resize();
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
